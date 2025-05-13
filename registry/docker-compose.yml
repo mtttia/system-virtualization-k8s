@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    networks:
+      - network
+
+  registry-ui:
+    image: joxit/docker-registry-ui:1.5-static
+    ports:
+      - "8080:80"
+    environment:
+      - REGISTRY_URL=http://docker.host.internal:5000
+      - DELETE_IMAGES=true
+    depends_on:
+      - registry
+    networks:
+      - network
+
+networks:
+  network:

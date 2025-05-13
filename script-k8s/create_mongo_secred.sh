@@ -1,0 +1,1 @@
+kubectl create secret generic mongodb-keyfile --from-file=mongodb/mongodb-keyfile

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: server
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: server
+    template:
+        metadata:
+            labels:
+                app: server
+        spec:
+            containers:
+                - name: server
+                  image: mtttia/server:latest
+                  ports:
+                      - containerPort: 3000
+                  resources:
+                      limits:
+                          memory: "512Mi"
+                          cpu: "500m"
+                      requests:
+                          memory: "256Mi"
+                          cpu: "250m"
+                  envFrom:
+                      - configMapRef:
+                            name: server-config
+                      - secretRef:
+                            name: server-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: server-service
+spec:
+    selector:
+        app: server
+    ports:
+        - port: 3000
+          targetPort: 3000
+    type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: server-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: server.local  # Replace with your actual domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: server-service
+                port:
+                  number: 3000
