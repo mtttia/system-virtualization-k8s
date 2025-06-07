@@ -18,11 +18,11 @@ spec:
                   imagePullPolicy: "Always"
                   resources:
                       limits:
-                          memory: "512Mi"
-                          cpu: "500m"
-                      requests:
                           memory: "256Mi"
                           cpu: "250m"
+                      requests:
+                          memory: "128Mi"
+                          cpu: "125m"
                   ports:
                       - containerPort: 80
 ---
@@ -41,18 +41,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-    name: client-ingress
-    annotations:
-        nginx.ingress.kubernetes.io/rewrite-target: /
+  name: client-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
-    rules:
-        - host: client.local
-          http:
-              paths:
-                  - path: /
-                    pathType: Prefix
-                    backend:
-                        service:
-                            name: client-service
-                            port:
-                                number: 80
+  ingressClassName: nginx
+  rules:
+    - host: client.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: client-service
+                port:
+                  number: 80
+
