@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button, Box, Typography, Paper, Grid } from '@mui/material'
 import { getMe, getDashboard, crash } from '../services/api'
 import { useSnackbar } from '../providers/SnackbarProvider'
+import { useNavigate } from 'react-router-dom'
 
 function Dashboard()
 {
@@ -9,6 +10,7 @@ function Dashboard()
     const [dashboard, setDashboard] = useState(null)
     const [error, setError] = useState('')
     const { showSnackbar } = useSnackbar()
+    const navigate = useNavigate()
 
     useEffect(() =>
     {
@@ -25,7 +27,6 @@ function Dashboard()
             showSnackbar('Data refreshed successfully')
         } catch (err)
         {
-            handleLogout()
             showSnackbar(err.response?.data?.message || 'Failed to fetch data', 'error')
             setError(err.response?.data?.message || 'Failed to fetch data')
         }
@@ -73,7 +74,7 @@ function Dashboard()
                         <Typography variant="h6" gutterBottom>Dashboard Data</Typography>
                         {dashboard && (
                             <>
-                                <Typography>Last Login: {new Date(dashboard.lastLogin).toLocaleString()}</Typography>
+                                <Typography>Last Login: {(new Date(user.last_login)).toLocaleString()}</Typography>
                             </>
                         )}
                     </Paper>

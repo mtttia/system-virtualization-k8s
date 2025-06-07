@@ -85,7 +85,7 @@ exports.login = async (req, res) =>
         }
 
         // Update last login
-        user.lastLogin = new Date();
+        user.last_login = (new Date()).toISOString();
         await user.save();
 
         const token = generateToken(user);

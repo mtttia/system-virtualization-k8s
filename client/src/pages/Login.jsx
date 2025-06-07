@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { TextField, Button, Box, Typography, Paper } from '@mui/material'
 import { login } from '../services/api'
+import { UseToken } from '../App'
 
 function Login()
 {
     const navigate = useNavigate()
     const [form, setForm] = useState({ email: '', password: '' })
     const [error, setError] = useState('')
+    const {setToken} = UseToken()
 
     const handleSubmit = async e =>
     {
@@ -15,10 +17,13 @@ function Login()
         try
         {
             const { data } = await login(form.email, form.password)
-            localStorage.setItem('token', data.token)
+            if (!(data.token)) throw new Error()
+            setToken(data.token)
             navigate('/')
         } catch (err)
         {
+            console.log(err);
+            
             setError(err.response?.data?.message || 'Login failed')
         }
     }

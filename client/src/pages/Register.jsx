@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { TextField, Button, Box, Typography, Paper } from '@mui/material'
 import { register } from '../services/api'
+import { UseToken } from '../App'
 
 function Register()
 {
     const navigate = useNavigate()
     const [form, setForm] = useState({ name: '', email: '', password: '' })
     const [error, setError] = useState('')
+    const {setToken} = UseToken()
 
     const handleSubmit = async e =>
     {
@@ -15,10 +17,13 @@ function Register()
         try
         {
             const { data } = await register(form.name, form.email, form.password)
-            localStorage.setItem('token', data.token)
+            
+            setToken(data.token)
             navigate('/')
         } catch (err)
         {
+            console.log(err);
+            
             setError(err.response?.data?.message || 'Registration failed')
         }
     }
