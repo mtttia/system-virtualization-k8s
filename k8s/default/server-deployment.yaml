@@ -1,34 +1,57 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    name: server
+  name: server
 spec:
-    replicas: 1
-    selector:
-        matchLabels:
-            app: server
-    template:
-        metadata:
-            labels:
-                app: server
-        spec:
-            containers:
-                - name: server
-                  image: mtttia/server:latest
-                  ports:
-                      - containerPort: 3000
-                  resources:
-                      limits:
-                          memory: "256Mi"
-                          cpu: "250m"
-                      requests:
-                          memory: "128Mi"
-                          cpu: "125m"
-                  envFrom:
-                      - configMapRef:
-                            name: server-config
-                      - secretRef:
-                            name: server-secret
+  replicas: 3 
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: server
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: server
+          image: mtttia/server:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+            requests:
+              memory: "128Mi"
+              cpu: "125m"
+          envFrom:
+            - configMapRef:
+                name: server-config
+            - secretRef:
+                name: server-secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -40,7 +63,7 @@ spec:
     ports:
         - port: 3000
           targetPort: 3000
-    type: LoadBalancer
+    type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

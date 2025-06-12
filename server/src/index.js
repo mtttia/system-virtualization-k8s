@@ -1,10 +1,11 @@
 const dotenv = require('dotenv');
 const express = require('express');
 const cors = require('cors');
-const connectDB = require('./config/database');
+const sequelize = require('./config/database');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const User = require('./models/User');
+const { QueryTypes } = require('sequelize');
 
 // if(process.env.NODE_ENV !== 'production'){
 //     dotenv.config();
@@ -24,17 +25,13 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.get('/live', (req, res) => res.status(200).send('I am alive'));
+app.get('/health', (req, res) => res.status(200).send('I am alive'));
 app.get('/ready', async (req, res) =>
 {
   try
   {
-    const user = await User.create({
-      name: "test user",
-      email: "impossibleemailreallydaungerous@test.com",
-      password: "password"
-    });
-    await User.deleteOne({ _id: user._id });
+    const result = await sequelize.query("SELECT 1", {type: QueryTypes.SELECT, raw:true})
+    if (result[0]["1"] != 1) throw new Error("Invalid DB response")
     res.status(200).send('Ready');
   } catch (err)
   {
