@@ -1,7 +1,7 @@
 # Esame di Virtualizzazione
 ## 1. Descrizione del progetto
 ## 1.1 Descrizione ed obbiettivo
-L'obbiettivo di questo progetto è quello di creare un cluster kubernetes production ready, scalabile verticalmente e con high availability (HA). Questo progetto si occupa solamente di dare una soluzione pronta all'uso per la creazione del solo cluster kubernetes, senza quindi occuparsi di ulteriori aspetti sistemistici quali configurazione del Firewall, gestione della DMZ, gestione dei certificati SSL, eccetera. Il cluster che si vuole creare è un cluster che risolva il problema dato da un scenario molto diffuso in ambito aziendale ovvero la gestione in container di un sistema client server sviluppata a micro servizi che sfrutti al meglio le funzionalità che kubernetes offre mantenendo comunque semplice la gestione del cluster. L'applicativo in questione avrà 3 micro servizi:
+L'obbiettivo di questo progetto è quello di creare un cluster kubernetes production ready, scalabile orizzontalmente e con high availability (HA). Questo progetto si occupa solamente di dare una soluzione pronta all'uso per la creazione del solo cluster kubernetes, senza quindi occuparsi di ulteriori aspetti sistemistici quali configurazione del Firewall, gestione della DMZ, gestione dei certificati SSL, eccetera. Il cluster che si vuole creare è un cluster che risolva il problema dato da un scenario molto diffuso in ambito aziendale ovvero la gestione in container di un sistema client server sviluppata a micro servizi che sfrutti al meglio le funzionalità che kubernetes offre mantenendo comunque semplice la gestione del cluster. L'applicativo in questione avrà 3 micro servizi:
 - applicazione client
 - applicazione server
 - database
@@ -9,7 +9,26 @@ L'obbiettivo di questo progetto è quello di creare un cluster kubernetes produc
 Essendo lo scopo di questo progetto un'architettura high available, saranno presenti più nodi control plane, più worker node e almeno 2 load balancer per accedere ai control plane ed ai worker node. \
 Per lo sviluppo di questo progetto sono state usate solamente tecnologie Open Source
 
-### 1.2 Challenge affrontate nel progetto
+### 1.2 Contesto - Scenario Real-World
+Si immagina che l'azienda A abbia sviluppato un'applicazione web utilizzando il pattern monolitico, una situazione piuttosto diffusa, considerando che lo sviluppo orientato ai microservizi è una tendenza relativamente recente. L'applicazione in questione era inizialmente ospitata su un singolo server VPS.
+
+Con il passare del tempo, l'applicazione si è arricchita di funzionalità moderne, come le comunicazioni in tempo reale, e ha visto crescere in modo esponenziale il numero di utenti in breve tempo, grazie ad alcune intuizioni vincenti da parte dell’azienda. Quello appena descritto sembrerebbe uno scenario ideale, se non fosse per il fatto che la crescita continua degli utenti ha finito per sovraccaricare il server VPS, che non riesce più a reggere il carico. L’azienda decide quindi di acquistare un server più potente, operazione che però comporta diverse ore, giorni o addirittura settimane di migrazione, durante le quali il vecchio server offre un servizio lento o addirittura assente.
+
+Dopo la migrazione, eseguita con successo, può comunque verificarsi un guasto sul nuovo server, oppure un errore umano può compromettere l’ambiente di produzione, portando persino alla perdita dei dati contenuti nel database.
+
+I principali problemi di scenari come questo sono tre:
+
+- Il singolo punto di fallimento: se la macchina di produzione ha un guasto, il servizio diventa indisponibile.
+
+- La non scalabilità: al crescere degli utenti, l’unica soluzione è acquistare server sempre più potenti, rischiando però disservizi tra una migrazione e l’altra.
+
+- Il classico problema “it worked on my machine”: non è garantito che l’ambiente di sviluppo sia identico a quello di produzione, causando possibili malfunzionamenti.
+
+Una soluzione a tutti questi problemi è offerta dalla containerizzazione (con tecnologie come containerd e Docker) e da Kubernetes, che consente la gestione di applicazioni containerizzate. Grazie alla containerizzazione, è possibile evitare il problema del “it worked on my machine”, sviluppando e testando il software localmente sulla stessa immagine usata in produzione.
+
+Kubernetes permette invece di superare i primi due problemi: consente la creazione di ambienti high availability (senza singoli punti di fallimento) e offre un’ottima scalabilità, soprattutto orizzontale, rendendo molto semplice l’aggiunta di nuovi server al cluster di produzione distribuendo il carico di lavoro.
+
+### 1.3 Challenge affrontate nel progetto
 1. Lo sviluppo di applicazioni orientati ai micro servizi
 2. La containerization dei vari applicativo con relativa gestione in cloud tramite un docker hub
 3. La creazione di un cluster kubernetes con high availability 
@@ -17,7 +36,7 @@ Per lo sviluppo di questo progetto sono state usate solamente tecnologie Open So
 5. La gestione di un DB Mysql con high availability (quindi la gestione dello storage condiviso in più nodi in modo da garantire le funzionalità anche in caso di spegnimento di un nodo)
 6. Rendere Client e Server disponibile per gli utenti tramite distinti nomi DNS.
 
-### 1.3 Descrizione dell'applicazione containerizzata
+### 1.4 Descrizione dell'applicazione containerizzata
 L'applicazione containerizzata consiste in:
 - applicativo client: Applicazione lato client sviluppata con [React JS](https://github.com/facebook/react), utilizzo di [Nginx](https://github.com/nginx/nginx) come HTTP server.
 - applicativo server: Applicazione server sviluppata con [Node JS](https://github.com/nodejs/node) utilizzando il framework [Express JS](https://github.com/expressjs/express).
@@ -25,10 +44,10 @@ L'applicazione containerizzata consiste in:
 - load balancer: Utilizzo del load balancer [HAProxy](https://github.com/haproxy/haproxy) insieme all'applicativo [Keepalived](https://github.com/acassen/keepalived) per gestire la ridondanza sui load balancer
 - strumento di virtualizzazione: Per creare il cluster e renderlo il più simile possible ad un ambiente di produzione si fa uso di macchine linux ubuntu server create tramite il software [LXD](https://github.com/lxc/lxc)
 
-### 1.4 Strumenti per il testing
+### 1.5 Strumenti per il testing
 Per testare la web app sarà sufficiente testare il corretto funzionamento collegandosi dal browser all'URL del client (default client.local, importante aggiungere l'host nel file `/etc/hosts`, facendolo puntare al Virtual IP del load balancer).
 Per testare l'horizontal pod autoscaling verrà utilizzato il software [Locust](https://github.com/locustio/locust) perfetto per load e stress testing.
-Per testare invece la ridondanza tra i server e quindi il corretto funzionamento dell'high availability cluster basterà spegnere e riaccendere i nodi del cluster in momenti randomici.
+Per testare invece la ridondanza tra i server e quindi il corretto funzionamento dell'high availability cluster basterà spegnere e riaccendere i nodi del cluster in momenti pseudo-randomici.
 Per testare il Database è inoltre presente un Deploy dell'immagine di [PHP My Admin](https://github.com/phpmyadmin/phpmyadmin) (usando phpmyadmin.local come ingress).
 
 ## 2. Infrastruttura
@@ -46,33 +65,38 @@ Il cluster è quindi composto da:
 
 ### 3.1 Sviluppo di applicazioni orientate ai micro servizi
 Per utilizzare al meglio kubernetes e le sue funzionalità è preferibile sviluppare applicazione orientate ai micro servizi, per ottenere questo risultato ho creato 2 progetti distinti per client e server (in modo da poterli scalare singolarmente). \
-Inoltre, sempre per poter sfruttare al meglio lo scaling e la possibilità di distribuire i pod di una stesso micro servizio su nodi diversi, ho sviluppato sia l'applicativo client che l'applicativo stateless per non avere problemi di session in memoria o di storage condivisi. \
+Inoltre, sempre per poter sfruttare al meglio lo scaling e la possibilità di distribuire i pod di una stesso micro servizio su nodi diversi, ho sviluppato sia l'applicativo client che l'applicativo stateless per non avere problemi di session in memoria o di storage condivisi (delegandoli a Mysql). \
 Per quanto riguarda MySQL, invece, ho scelto di utilizzare il Percona Operator per MySQL che gestisce automaticamente la creazione di un cluster database altamente disponibile, con replica sincrona e failover automatico, facilitando così la gestione e la resilienza del database all'interno dell'ambiente Kubernetes.
 
 ### 3.2 Containerizzazione dei micro servizi
 Ogni micro servizio ha la sua immagine creata tramite DockerFile che esegue la build del micro servizio e poi lo espone tramite una porta.
 Queste immagini vengono successivamente pushate sul docker hub (un docker hub pubblico in questo caso) per poi essere pullate da kubernetes.
 Entrando nella cartella di ogni progetto è possibile trovare il DockerFile contenente le istruzione per creare l'immagine del container.
+**Applicativo Client**: L'applicativo client è un applicativo realizzato tramite react JS, e servito tramite nginx, il suo docker file parte da un immagine di alpine linux con node js preinstallato per eseguire il building dell'applicazione, utilizza successivamente un'ulteriore immagine di alpine linux con all'interno nginx già pronto per l'uso per esporre il server http client all'esterno. \
+**Applicativo Server**: L'applicativo server è invece un web server http realizzato tramite node JS e la libreria express JS, il suo docker file parte da un'immagine di alpine linux con node js preinstallato, ne installa le dipendenze e fa partire l'applicativo
 
 ### 3.3 Creazione del cluster kubernetes con High Availability
-Come CNI del cluster è stato utilizzato [Flannel](https://github.com/flannel-io/flannel). \
-Per creare un cluster Kubernetes con high availability è necessario avere almeno 3 nodi control plane, questo rende possibile il funzionamento delle attività che deve svolgere il control plane anche in caso di rottura di uno dei 3 nodi. Questo è possibile perché la sincronizzazione dei nodi si basa su un sistema di consenso (etcd) che richiede una maggioranza (quorum) per garantire coerenza e disponibilità: con 3 nodi, il cluster può tollerare la perdita di uno di essi mantenendo il controllo operativo senza rischiare inconsistenze o interruzioni. \
-I load balancer vengono configurati per distribuire il traffico verso l’3. API server sui 3 nodi control plane, oltre a gestire il bilanciamento delle richieste HTTP e HTTPS (porte 80 e 443) inoltrate ai service NGINX Ingress presenti sui nodi worker.
+Come CNI del cluster è stato utilizzato [Flannel](https://github.com/flannel-io/flannel).
+Per quanto riguarda la containerizzazione, è stato invece utilizzato [Containerd](https://github.com/containerd/containerd), lo stesso runtime su cui si basa anche Docker.
+
+Per creare un cluster Kubernetes ad alta disponibilità (high availability) è necessario avere almeno tre nodi control plane. Questo permette al control plane di continuare a funzionare anche in caso di guasto di uno dei nodi. Ciò è possibile grazie al sistema di consenso su cui si basa la sincronizzazione dei nodi, ovvero etcd, che richiede il raggiungimento di un quorum (la maggioranza) per garantire consistenza e disponibilità. Con tre nodi, il cluster può tollerare la perdita di uno di essi, mantenendo il controllo operativo senza rischio di inconsistenze o interruzioni.
+
+I load balancer vengono configurati per distribuire il traffico verso i tre API server presenti sui nodi control plane. Inoltre, si occupano del bilanciamento delle richieste HTTP e HTTPS (sulle porte 80 e 443), inoltrandole ai servizi NGINX Ingress presenti sui nodi worker.
 
 ### 3.4 Horizontal pod autoscaling
 Viene utilizzato l'Horizontal Pod Autoscaling (HPA) per monitorare dinamicamente il carico di lavoro sull’applicazione server e adattare automaticamente il numero di pod in esecuzione. In questo modo, il sistema è in grado di scalare orizzontalmente le risorse in base al volume delle richieste ricevute, garantendo prestazioni ottimali anche in caso di picchi di traffico e ottimizzando l’utilizzo delle risorse del cluster. \
-Per rendere possibile ciò è stato inoltre installato il metric server.
+Per rendere possibile ciò è stato inoltre installato il [metric server](https://github.com/kubernetes-sigs/metrics-server).
 
 ### 3.5 High Availability con Mysql
-Per garantire HA con MySQL ho utilizzato il Percona Operator per MySQL, una soluzione che permette la creazione di un cluster MySQL distribuito e resiliente. Il Percona Operator automatizza la creazione e il failover del database, assicurando che i dati siano sempre sincronizzati tra i nodi e che il sistema continui a funzionare anche in caso di guasto di uno o più nodi. Per lo storage persistente ho scelto Rancher come storage provisioner, che fornisce volumi dinamici.
+Per garantire HA con MySQL ho utilizzato il Percona Operator per MySQL, una soluzione che permette la creazione di un cluster MySQL distribuito e resiliente. Il Percona Operator automatizza la creazione e il failover del database, assicurando che i dati siano sempre sincronizzati tra i nodi e che il sistema continui a funzionare anche in caso di guasto di uno o più nodi. Per lo storage persistente ho scelto [Rancher](https://github.com/rancher/rancher) come storage provisioner, che fornisce volumi dinamici.
 
 ### 3.6 Creazione degli ingress
-Per permettere l’accesso alle applicazioni client e server tramite domini personalizzati, ho configurato gli Ingress nel cluster Kubernetes. Utilizzando il controller NGINX Ingress, ho creato regole che instradano il traffico verso i rispettivi servizi in base ai domini client.local e server.local.
+Per permettere l’accesso alle applicazioni client e server tramite domini personalizzati, ho configurato gli Ingress nel cluster Kubernetes. Utilizzando il controller [NGINX Ingress](https://github.com/kubernetes/ingress-nginx), ho creato regole che instradano il traffico verso i rispettivi servizi in base ai domini `client.local` e `server.local`.
 
 ## 4 Simulazione
 
 ### 4.1 Setup macchine virtuali
-![Cluster configuration](/img/1-virtual-machine.png) \
+![Cluster configuration](img/1-virtual-machine.png) \
 Per eseguire questa simulazione verranno impiegate 8 macchine virtuali così distribuite:
 - 2 load balance (`k8s-lb-1`, `k8s-lb-2`)
 - 3 kubernetes control plane (`k8s-master-1`, `k8s-master-2`,`k8s-master-3`)
@@ -94,7 +118,7 @@ kubeadm init --control-plane-endpoint "10.196.35.30:6443" \
 ```
 
 Per rendere più semplice l'interazione con il cluster ed il successivo testing degli Ingress di kubernetes ho assegnato ad ogni host un nome usando, in ambiente debian,il file `/etc/hosts` come mostrato nella seguente immagine.
-![Hosts](/img/3-hostnames.png) 
+![Hosts](img/3-hostnames.png) 
 
 ### 4.2 Setup del cluster
 Una volta creato il cluster, è stato subito aggiunto Flannel seguendo la documentazione ufficiale di Github ([Deploying Flannel with kubectl](https://github.com/flannel-io/flannel?tab=readme-ov-file#deploying-flannel-with-kubectl)). \
