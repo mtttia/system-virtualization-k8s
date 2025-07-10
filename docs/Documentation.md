@@ -61,21 +61,59 @@ Il cluster è quindi composto da:
 ## 2.2 Diagramma del cluster
 ![Diagramma del cluster](img/cluster-diagram.png)
 
-## 3. Implementazione
+## 3. Creazione e configurazione delle macchine
 
-### 3.1 Sviluppo di applicazioni orientate ai micro servizi
+### 3.1 Creazione macchine virtuali con LXD
+Per la creazione delle macchine virtuali è stato utilizzato [LXD](https://github.com/canonical/lxd.git), uno strumento per la virtualizzazione di macchine linux, utile per emulare un ambiente cloud-like.
+Procedura di installazione di lxd e di creazione delle macchine virtuali:
+In seguito all'installazione di lxd (`sudo snap install lxd; lxd init` in ambiente ubuntu) si procede con la creazione delle macchine virtuali. \
+Per creare la prima macchina virtuale partendo da una macchina ubuntu, con lxd, è sufficiente eseguire il comando `lxc launch ubuntu:24.04 base-ubuntu --vm`, dove `ubuntu:24.04` indica il sistema operativo della macchina, `base-ubuntu` indica il nome che si vuole assegnare alla machina e `--vm` indica la volontà di creare una macchina virtuale e non un container. \
+Una volta creata la prima macchina si procede alla configurazione installando tutti i servizi necessari alle macchine del cluster, si è preferito configurare una macchina installandogli tutti i servizi necessari ad ogni macchina per poi clonarla e creare gli effettivi nodi del cluster. \
+Per clonare le macchine una volta completata la configurazione base è sufficiente utilizzare il comando `lxc copy base-ubuntu k8s-master-1`, verrà creata una macchina `k8s-master-1` uguale alla macchina `base-ubuntu`
+Grazie a lxd è possibile creare una VM ubuntu tramite un semplice comando senza il bisogno di scaricare l'immagine ISO del sistema operativo e di doverlo installare sulla macchina. 
+
+### 3.2 Installazione dei servizi
+I servizi installati sulle macchine sono i seguenti:
+
+**Tutte le macchine**: Su tutte le macchine sono stati configurati i servizi comuni
+- **ssh**: è possibile installare il server ssh tramite questo comando `sudo apt update && sudo apt install openssh-server -y`, in questo caso è stato solamente configurato per permettere il login con password e con chiave public key (chiave asimmetrica), per farlo bisogna abilitare le seguenti configurazioni nel file `/etc/ssh/ssh_config`, abilitando 
+  ```
+  PasswordAuthentication yes
+  PubkeyAuthentication yes
+  ```
+  successivamente dal computer personale (quello usato per accedere al cluster) è bastato eseguire il comando `ssh-copy-id user@10.196.35.151` mettendo come indirizzo IP quello fornito dal lxd visualizzabile tramite il comando `lxc list`, assicurandosi di aver già generato una chiave ssh sul computer da cui ci si connette.
+
+**Macchine con kubernetes** (k8s-master-1, k8s-master-2, k8s-master-3, k8s-worker-1, k8s-worker-2, k8s-worker-3): Queste macchine sono state invece configurate con le dipendenze richieste da kubernetes:
+- **Container runtime**: Per configurare il container runtime è sufficiente seguire [la guida di kubernetes](https://kubernetes.io/docs/setup/production-environment/container-runtimes/) seguendo le istruzioni per usare `containerd` come container runtime. Il primo step richiesto è quello di installare containerd, le modalità di installazione di containerd sono descritte [sulla guida ufficiale](https://github.com/containerd/containerd/blob/main/docs/getting-started.md), in questa esercitazione è stata seguita l'opzione [Option 2: From apt-get or dnf](https://github.com/containerd/containerd/blob/main/docs/getting-started.md#option-2-from-apt-get-or-dnf) -> `Ubuntu`, una volta aggiunto il repository apt di Docker (come suggerito dalla documentazione ufficiale) è possibile installare containerd con `sudo apt install containerd.io`. Dopo aver installato contained è possibile continuare con la guida di kubernetes precedentemente citata per una corretta configurazione.
+- **Installare kubeadm**: Per installare e configurare tutti i componenti necessari di kubernetes sono stati seguiti fedelmente i passaggi indicati dalla [guida ufficiale di kubernetes](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/) con alcuni accorgimenti:
+  - [Swap Configuration](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#swap-configuration): è stata scelta l'opzione di disabilitare la memoria di swap in modo da garantire il corretto funzionamento di kubelet.
+  [Installing a container runtime](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-runtime): per questo step è sufficiente la configurazione precedentemente spiegata sul container runtime.
+  - [Installing kubeadm, kubelet and kubectl](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl): Dato che le macchine montano ubuntu come sistema operativo è necessario seguire la sezione `Debian-based distributions` 
+
+**Macchine che svolgono la funzione di load balancing e proxy al cluster**: (k8s-lb-1, k8s-lb-2): In queste macchine è necessario installare gli strumenti utili a fare da load balancing e da proxy manager: 
+- **Keepalived**: Questo servizio consente di assegnare un IP virtuale ad una macchina ed a fare in modo che quell'IP passi ad un'altra macchina in caso fallimento dell'healt check, serve ad aggiungere high availability sui load balancer, è possibile installare keepalived tramite il comando `sudo apt install keepalived`, successivamente è necessario configurarlo modificando il file presente in `/etc/keepalived/keepalived.conf`, il file in `load_balancer/keepalived/keepalived.conf` (presente in questo progetto) è la configurazione di keepalived utilizzata per il nodo che di default avrà il virtual IP, per la corretta configurazione di keepalived su tutti i nodi è possibile visionare [questa guida offerta da kubernetes](https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md#keepalived-configuration) dove viene illustrato il file di configurazione di keepalived. In questo caso il file di configurazione del load balancer di backup avrà come `STATE` `BACKUP` invece di `MASTER` ed avrà una `priority` minore. Una volta configurato keepalived si fa ripartire il servizio con `sudo systemctl restart keepalived --now`
+- **Haproxy**: Questo servizio agisce da load balancing per i nodi del cluster, è possibile installare keepalived tramite il comando `sudo apt install haproxy`, successivamente è necessario configurare haproxy tramite il file presente in `/etc/haproxy/haproxy.cfg`, per configurare haproxy è disponibile una [guida offerta da kubernetes](https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md#haproxy-configuration). In questo progetto il file di configurazione utilizzato è disponibile in `load_balancer/haproxy/haproxy.conf`. Una volta configurato haproxy si fa ripartire il servizio con `sudo systemctl restart haproxy --now`.
+
+### 3.3 Configurazione di rete
+Dato che le macchine sono state virtualizzate tramite LXD si è preferito assegnare gli indirizzi IP statici configurando il server DHCP di LXD.
+Per configurare il server DHCP di LXD è sufficiente il comando `lxc config device set k8s-master-1 eth0 ipv4.address 10.196.35.20`, in questa maniera verrà assegnato l'indirizzo IP `10.196.35.20` alla macchina `k8s-master-1`.
+Un'opzione alternativa poteva essere quella di configurare a mano le interfacce di rete per ogni macchina, ma ho preferito la precedente opzione in modo che default gateway e dns server fossero impostato di default dal server DHCP di LXD.
+
+## 4. Implementazione
+
+### 4.1 Sviluppo di applicazioni orientate ai micro servizi
 Per utilizzare al meglio kubernetes e le sue funzionalità è preferibile sviluppare applicazione orientate ai micro servizi, per ottenere questo risultato ho creato 2 progetti distinti per client e server (in modo da poterli scalare singolarmente). \
 Inoltre, sempre per poter sfruttare al meglio lo scaling e la possibilità di distribuire i pod di una stesso micro servizio su nodi diversi, ho sviluppato sia l'applicativo client che l'applicativo stateless per non avere problemi di session in memoria o di storage condivisi (delegandoli a Mysql). \
 Per quanto riguarda MySQL, invece, ho scelto di utilizzare il Percona Operator per MySQL che gestisce automaticamente la creazione di un cluster database altamente disponibile, con replica sincrona e failover automatico, facilitando così la gestione e la resilienza del database all'interno dell'ambiente Kubernetes.
 
-### 3.2 Containerizzazione dei micro servizi
+### 4.2 Containerizzazione dei micro servizi
 Ogni micro servizio ha la sua immagine creata tramite DockerFile che esegue la build del micro servizio e poi lo espone tramite una porta.
 Queste immagini vengono successivamente pushate sul docker hub (un docker hub pubblico in questo caso) per poi essere pullate da kubernetes.
 Entrando nella cartella di ogni progetto è possibile trovare il DockerFile contenente le istruzione per creare l'immagine del container.
 **Applicativo Client**: L'applicativo client è un applicativo realizzato tramite react JS, e servito tramite nginx, il suo docker file parte da un immagine di alpine linux con node js preinstallato per eseguire il building dell'applicazione, utilizza successivamente un'ulteriore immagine di alpine linux con all'interno nginx già pronto per l'uso per esporre il server http client all'esterno. \
 **Applicativo Server**: L'applicativo server è invece un web server http realizzato tramite node JS e la libreria express JS, il suo docker file parte da un'immagine di alpine linux con node js preinstallato, ne installa le dipendenze e fa partire l'applicativo
 
-### 3.3 Creazione del cluster kubernetes con High Availability
+### 4.3 Creazione del cluster kubernetes con High Availability
 Come CNI del cluster è stato utilizzato [Flannel](https://github.com/flannel-io/flannel).
 Per quanto riguarda la containerizzazione, è stato invece utilizzato [Containerd](https://github.com/containerd/containerd), lo stesso runtime su cui si basa anche Docker.
 
@@ -83,19 +121,19 @@ Per creare un cluster Kubernetes ad alta disponibilità (high availability) è n
 
 I load balancer vengono configurati per distribuire il traffico verso i tre API server presenti sui nodi control plane. Inoltre, si occupano del bilanciamento delle richieste HTTP e HTTPS (sulle porte 80 e 443), inoltrandole ai servizi NGINX Ingress presenti sui nodi worker.
 
-### 3.4 Horizontal pod autoscaling
+### 4.4 Horizontal pod autoscaling
 Viene utilizzato l'Horizontal Pod Autoscaling (HPA) per monitorare dinamicamente il carico di lavoro sull’applicazione server e adattare automaticamente il numero di pod in esecuzione. In questo modo, il sistema è in grado di scalare orizzontalmente le risorse in base al volume delle richieste ricevute, garantendo prestazioni ottimali anche in caso di picchi di traffico e ottimizzando l’utilizzo delle risorse del cluster. \
 Per rendere possibile ciò è stato inoltre installato il [metric server](https://github.com/kubernetes-sigs/metrics-server).
 
-### 3.5 High Availability con Mysql
+### 4.5 High Availability con Mysql
 Per garantire HA con MySQL ho utilizzato il Percona Operator per MySQL, una soluzione che permette la creazione di un cluster MySQL distribuito e resiliente. Il Percona Operator automatizza la creazione e il failover del database, assicurando che i dati siano sempre sincronizzati tra i nodi e che il sistema continui a funzionare anche in caso di guasto di uno o più nodi. Per lo storage persistente ho scelto [Rancher](https://github.com/rancher/rancher) come storage provisioner, che fornisce volumi dinamici.
 
-### 3.6 Creazione degli ingress
+### 4.6 Creazione degli ingress
 Per permettere l’accesso alle applicazioni client e server tramite domini personalizzati, ho configurato gli Ingress nel cluster Kubernetes. Utilizzando il controller [NGINX Ingress](https://github.com/kubernetes/ingress-nginx), ho creato regole che instradano il traffico verso i rispettivi servizi in base ai domini `client.local` e `server.local`.
 
-## 4 Simulazione
+## 5 Simulazione
 
-### 4.1 Setup macchine virtuali
+### 5.1 Setup macchine virtuali
 ![Cluster configuration](img/1-virtual-machine.png) \
 Per eseguire questa simulazione verranno impiegate 8 macchine virtuali così distribuite:
 - 2 load balance (`k8s-lb-1`, `k8s-lb-2`)
@@ -120,7 +158,7 @@ kubeadm init --control-plane-endpoint "10.196.35.30:6443" \
 Per rendere più semplice l'interazione con il cluster ed il successivo testing degli Ingress di kubernetes ho assegnato ad ogni host un nome usando, in ambiente debian,il file `/etc/hosts` come mostrato nella seguente immagine.
 ![Hosts](img/3-hostnames.png) 
 
-### 4.2 Setup del cluster
+### 5.2 Setup del cluster
 Una volta creato il cluster, è stato subito aggiunto Flannel seguendo la documentazione ufficiale di Github ([Deploying Flannel with kubectl](https://github.com/flannel-io/flannel?tab=readme-ov-file#deploying-flannel-with-kubectl)). \
 Successivamente alla creazione del cluster è stato utilizzato il comando kubeadm join (fornito dall'output del comando kubeadm init) sui vari nodi per aggiungere control plane e worker node. \
 Per permettere il funzionamento degli Ingress e dell'horizontal pod autoscaler ho applicato i necessari manifesti .yaml reperibili dalle documentazioni ufficiale dei servizi necessari ([metric server](https://kubernetes-sigs.github.io/metrics-server/), [nginx ingress](https://github.com/kubernetes/ingress-nginx)) (situati della cartella k8s/cluster-only). \
@@ -129,34 +167,34 @@ Infine rimangono da applicare i manifesti dei servizi client, server e phpMyAdmi
 La seguente immagine mostra gli output dei comandi una volta che il cluster è stato correttamente configurato
 ![Comandi del cluster](img/2-show-cluster.png)
 
-### 4.3 Descrizione dei manifesti
+### 5.3 Descrizione dei manifesti
 Il sistema è composto da tre principali componenti deployati in Kubernetes: client, server, e phpMyAdmin, ciascuno definito tramite Deployment, Service e Ingress. Il client è una web app con 3 repliche e policy anti-affinità per distribuirne i pod tra i nodi. È accessibile tramite l’host client.local. Il server, anch’esso con 3 repliche e anti-affinità, espone un’API sulla porta 3000, configurata tramite ConfigMap e Secret, e include probe di liveness e readiness. È bilanciato dinamicamente tramite un HorizontalPodAutoscaler (HPA) tra 3 e 9 repliche, in base all’utilizzo di CPU e memoria. L'interfaccia phpMyAdmin consente l’accesso al database e viene esposta su phpmyadmin.local. La configurazione dell’ambiente e delle credenziali è separata tramite oggetti ConfigMap e Secret, garantendo modularità e sicurezza. Tutti i servizi interni usano ClusterIP, e l’accesso esterno è gestito da un Ingress NGINX.
 Per far funzionare correttamente gli ingress NGINX i 2 load balancer faranno un load balancing tra i 3 worker node servendo alla porta 80 del load balancer le porte esposte dal service dell'ingress, quindi i servizi web saranno accessibili tramite i load balancer e quindi tramite l'IP virtuale sopra descritto.
 
-### 4.4 Test del cluster
+### 5.4 Test del cluster
 Per testare il cluster ci sono diversi modi, il migliore è accedere all'url `http://client.local`, creare un account ed accedere alla dashboard, questo permette di controllare il corretto funzionamento di Ingress, client, server e database, ricoprendo completamente lo use case di questa applicazione. \
 Per semplicita in questa simulazione testeremo la correttezza del cluster tramite un route del server che accede al Database, questo ci permette di testare Ingress, server e database che ricoprono una buona parte degli elementi da testare e rendere facile e veloce avere un riscontro visivo del funzionamento corretto del cluster. \
 Testiamo quindi che il cluster funzioni ![Risposta del server](img/4-cluster-demostration.png)
 
-### 4.5 Test HA sul load balancer
+### 5.5 Test HA sul load balancer
 Ora testeremo il corretto funzionamento dell'high availability su varie parti del cluster spegnendo a runtime alcune macchine virtuali.
 Il primo test lo faremo sui load balancer: spegneremo il load balancer 1 che è quello che attualmente detiene l'IP virtuale e vedremo se il load balancer 2 prenderà correttamente l'ip virtuale.
 ![ha sui load balancer](img/5-ha-loadbalancing.png) \
 Come dimostrato dall'immagine il load balancer 2 detiene correttamente l'ip virtuale 10.196.35.30 ed il cluster continua a funzionare correttamente.
 
-### 4.6 Tets HA sul control plane
+### 5.6 Tets HA sul control plane
 Ora proveremo a spegnere il nodo master 1 ovvero uno dei control plane e testeremo che il cluster continui a funzionare correttamente in quando l'etcd server dovrebbe continuare ad avere il quorum di 2 nodi su 3 votanti.
 ![ha sul control plane](img/6-ha-control-plane-node.png)
 
-### 4.7 Test HA sul un worker node
+### 5.7 Test HA sul un worker node
 Ora proveremo a spegnere il nodo worker 1 ovvero un nodo worker e testeremo che il cluster continui a funzionare correttamente in quanto Percona XtraDB Cluster che utilizza il galera cluster (libreria di replicazione sincrona multimaster) continua ad avere il quorum di 2 nodi con Percona XtraDB Cluster attivi su 3.
 ![ha sul worker node](img/7-ha-worker-node.png)
 
-### 4.8 Test HA sul secondo control plane
+### 5.8 Test HA sul secondo control plane
 Ora proveremo a spegnere il nodo master 3 ovvero un altro dei control plane, in questo caso il cluster resterà attivo ma in stato degradato in quanto l'etcd perde il quorum e non potrà più accettare modifiche allo stato del cluster ma i workload esistenti continueranno a girare.
 ![ha sul secondo control plane](img/8-ha-2-control-plane-node.png)
 
-### 4.9 Test horizontal pod autoscaling
+### 5.9 Test horizontal pod autoscaling
 La prossima simulazione è volta a testare il corretto funzionamento dell'horizontal pod autoscaler, in questo cluster l'hpa è applicato solamente sul server a scopo dimostrativo, inizialmente possiamo notare che se nessuno fa chiamate al server i suoi livelli di CPU e memoria sono bassi e quindi il numero di pod è al minimo
 ![HPA](img/9-hpa.png)
 Iniziamo il testing facendo partire Locust e utilizzando la route stress sul server che aspetta 2 secondi e poi risponde. \
